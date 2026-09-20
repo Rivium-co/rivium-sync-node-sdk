@@ -120,7 +120,7 @@ export enum RiviumSyncLogLevel {
 export interface RiviumSyncAdminConfig {
   /** Your Project API Key (rv_live_xxx or rv_test_xxx) - REQUIRED */
   apiKey: string;
-  /** Server secret for server-side authentication (nl_srv_xxx) - REQUIRED for all server operations */
+  /** Server secret for server-side authentication (rv_srv_xxx) - REQUIRED for all server operations */
   serverSecret: string;
   /** Optional user identifier for Security Rules (used as auth.uid when acting on behalf of a user) */
   userId?: string;
@@ -643,6 +643,45 @@ export class RiviumSyncAdmin {
   // HTTP Client
   // ==========================================================================
 
+  /**
+   * Mint a user token so your app can prove who the acting user is.
+   *
+   * Security Rules read `auth.uid`. A client cannot set that itself - the API
+   * key it ships with is public, so the server would have no reason to believe
+   * it. Your backend, which holds the server secret, calls this and hands the
+   * token to the app; the client SDKs take it through their `tokenProvider`
+   * option and send it on every request.
+   *
+   * Never ship the server secret (or this call) inside an app.
+   *
+   * @param userId  Your own id for the signed-in user - whatever your rules expect.
+   * @param expiresIn Lifetime in seconds. Default 1 hour, maximum 24 hours.
+   *
+   * @example
+   * // In your Express backend, behind your own session check:
+   * app.post('/rivium-sync-token', async (req, res) => {
+   *   const { token, expiresIn } = await sync.createUserToken(req.session.userId);
+   *   res.json({ token, expiresIn });
+   * });
+   */
+  async createUserToken(
+    userId: string,
+    expiresIn?: number,
+  ): Promise<{ token: string; userId: string; expiresIn: number }> {
+    if (!userId) {
+      throw new RiviumSyncError(
+        RiviumSyncErrorCode.INVALID_CONFIG,
+        'createUserToken requires a userId',
+      );
+    }
+
+    return this.request<{ token: string; userId: string; expiresIn: number }>(
+      'POST',
+      '/users/token',
+      expiresIn === undefined ? { userId } : { userId, expiresIn },
+    );
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -881,14 +920,32 @@ export class RiviumSyncAdmin {
   // Realtime (Optional)
   // ==========================================================================
 
+  /** Project the API key belongs to, from POST /connections/token. */
+  private projectId: string | null = null;
+
+  /**
+   * Topic for a collection or a single document.
+   * `rivium_sync/{projectId}/{databaseName}/{collectionName}[/{documentId}]`
+   */
+  private topicFor(databaseId: string, collectionId: string, documentId?: string): string {
+    const base = `rivium_sync/${this.projectId ?? 'unknown'}/${databaseId}/${collectionId}`;
+    return documentId === undefined ? base : `${base}/${documentId}`;
+  }
+
   private async initRealtime(): Promise<void> {
     try {
       this.log(RiviumSyncLogLevel.DEBUG, 'Fetching MQTT token...');
 
       const tokenData = await this.request<{
         token: string;
+        projectId?: string;
         mqtt: { host: string; port: number; useTls: boolean };
       }>('POST', '/connections/token');
+
+      // Topics are `rivium_sync/{projectId}/{databaseName}/{collectionName}/...`
+      // - the names the caller uses, under the project id the server returns,
+      // so the same database name in two projects cannot collide.
+      this.projectId = tokenData.projectId ?? null;
 
       this.mqttConfig = {
         host: tokenData.mqtt.host,
@@ -963,7 +1020,7 @@ export class RiviumSyncAdmin {
     }
 
     const path = `/${databaseId}/${collectionId}/${documentId}`;
-    const mqttTopic = `rivium_sync/${this.config.apiKey.substring(0, 16)}/db/${databaseId}/${collectionId}/${documentId}`;
+    const mqttTopic = this.topicFor(databaseId, collectionId, documentId);
 
     if (!this.documentListeners.has(path)) {
       this.documentListeners.set(path, new Set());
@@ -1007,7 +1064,7 @@ export class RiviumSyncAdmin {
     }
 
     const path = `/${databaseId}/${collectionId}`;
-    const mqttTopic = `rivium_sync/${this.config.apiKey.substring(0, 16)}/db/${databaseId}/${collectionId}/+`;
+    const mqttTopic = this.topicFor(databaseId, collectionId, 'changes');
 
     if (!this.collectionListeners.has(path)) {
       this.collectionListeners.set(path, new Set());
@@ -1046,13 +1103,11 @@ export class RiviumSyncAdmin {
   private resubscribeAll(): void {
     if (!this.mqttClient?.connected) return;
 
-    const appId = this.config.apiKey.substring(0, 16);
-
     this.documentListeners.forEach((_, path) => {
       const parts = path.split('/').filter((p) => p);
       if (parts.length === 3) {
         const [databaseId, collectionId, documentId] = parts;
-        const topic = `rivium_sync/${appId}/db/${databaseId}/${collectionId}/${documentId}`;
+        const topic = this.topicFor(databaseId, collectionId, documentId);
         this.mqttClient!.subscribe(topic, { qos: 1 });
       }
     });
@@ -1061,7 +1116,7 @@ export class RiviumSyncAdmin {
       const parts = path.split('/').filter((p) => p);
       if (parts.length === 2) {
         const [databaseId, collectionId] = parts;
-        const topic = `rivium_sync/${appId}/db/${databaseId}/${collectionId}/+`;
+        const topic = this.topicFor(databaseId, collectionId, 'changes');
         this.mqttClient!.subscribe(topic, { qos: 1 });
       }
     });

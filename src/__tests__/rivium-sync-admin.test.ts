@@ -17,7 +17,7 @@ import {
 
 const VALID_CONFIG = {
   apiKey: 'rv_live_test1234567890',
-  serverSecret: 'nl_srv_secret1234567890',
+  serverSecret: 'rv_srv_secret1234567890',
 };
 
 function createAdmin(overrides = {}) {

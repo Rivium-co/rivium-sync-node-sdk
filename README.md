@@ -4,7 +4,7 @@ Official Node.js SDK for RiviumSync Realtime Database. Designed for server-side 
 
 ## Features
 
-- **Admin-level access** - Bypasses security rules by default
+- **Server-side access** - Authenticates with your server secret, not an app key
 - **Full CRUD operations** - Create, read, update, delete documents
 - **Query support** - Filters, sorting, pagination
 - **Batch operations** - Atomic writes across multiple documents
@@ -31,8 +31,8 @@ import { RiviumSyncAdmin } from '@rivium/sync-node';
 
 // Initialize with your Project API Key and Server Secret
 const riviumSync = new RiviumSyncAdmin({
-  apiKey: process.env.RIVIUM_SYNC_API_KEY,           // nl_live_xxx or nl_test_xxx
-  serverSecret: process.env.RIVIUM_SYNC_SERVER_SECRET, // nl_srv_xxx - Required for server-side operations
+  apiKey: process.env.RIVIUM_SYNC_API_KEY,           // rv_live_xxx
+  serverSecret: process.env.RIVIUM_SYNC_SERVER_SECRET, // rv_srv_xxx - Required for server-side operations
 });
 
 // Get a database reference (database must be created via dashboard first)
@@ -42,7 +42,7 @@ const db = riviumSync.database('your-database-id');
 const users = db.collection('users');
 ```
 
-> **Note:** Both `apiKey` and `serverSecret` are required for all server-side SDK operations. You can find these credentials in your [AuthLeap Dashboard](https://console.authleap.com) when you create a project. Database creation and deletion is managed via the dashboard, not via SDK.
+> **Note:** Both `apiKey` and `serverSecret` are required for all server-side SDK operations. You can find these credentials in [Rivium Console](https://console.rivium.co) when you create a project. Database creation and deletion is managed via the dashboard, not via SDK.
 
 ## CRUD Operations
 
@@ -201,13 +201,34 @@ unsubscribeAll();
 unsubscribeQuery();
 ```
 
+## User Tokens
+
+Your app's Security Rules check `auth.uid`. A browser or phone cannot be
+trusted to say who the user is - the API key it ships with is public - so your
+backend mints a short-lived token for the user it has already signed in, and
+the client SDK sends it:
+
+```typescript
+// In your backend, behind your own session check:
+app.post('/rivium-sync-token', async (req, res) => {
+  const { token, expiresIn } = await riviumSync.createUserToken(req.session.userId);
+  res.json({ token, expiresIn });
+});
+```
+
+The client passes that to its `tokenProvider` option. Tokens last an hour by
+default; pass a second argument in seconds to change it, up to 24 hours.
+
+This SDK holds the server secret, so it is already trusted and never needs a
+token of its own.
+
 ## Configuration Options
 
 ```typescript
 const riviumSync = new RiviumSyncAdmin({
   // Required
-  apiKey: 'nl_live_xxxxxxxxxxxxxxxxxxxxx',        // Required - from AuthLeap Dashboard
-  serverSecret: 'nl_srv_xxxxxxxxxxxxxxxxxxxxx',   // Required - from AuthLeap Dashboard
+  apiKey: 'rv_live_xxxxxxxxxxxxxxxxxxxxx',        // Required - from Rivium Console
+  serverSecret: 'rv_srv_xxxxxxxxxxxxxxxxxxxxx',   // Required - from Rivium Console
 
   // Optional
   enableRealtime: false, // Enable MQTT subscriptions
@@ -220,10 +241,10 @@ const riviumSync = new RiviumSyncAdmin({
 
 | Credential | Format | Description |
 |------------|--------|-------------|
-| **API Key** | `nl_live_xxx` or `nl_test_xxx` | Used for client-side SDKs and server-side SDKs |
-| **Server Secret** | `nl_srv_xxx` | **Required** for server-side operations. Never expose in client-side code. |
+| **API Key** | `rv_live_xxx` | Used for client-side SDKs and server-side SDKs |
+| **Server Secret** | `rv_srv_xxx` | **Required** for server-side operations. Never expose in client-side code. |
 
-Both credentials are generated when you create a project in the [AuthLeap Dashboard](https://console.authleap.com). Store them securely and never commit them to version control.
+Both credentials are generated when you create a project in [Rivium Console](https://console.rivium.co). Store them securely and never commit them to version control.
 
 ### Log Levels
 
