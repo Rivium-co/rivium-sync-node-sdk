@@ -8,7 +8,7 @@ Official Node.js SDK for RiviumSync Realtime Database. Designed for server-side 
 - **Full CRUD operations** - Create, read, update, delete documents
 - **Query support** - Filters, sorting, pagination
 - **Batch operations** - Atomic writes across multiple documents
-- **Optional realtime** - MQTT-based subscriptions when needed
+- **Optional realtime** - Live subscriptions when needed
 - **TypeScript** - Full type definitions included
 
 ## Installation
@@ -35,14 +35,16 @@ const riviumSync = new RiviumSyncAdmin({
   serverSecret: process.env.RIVIUM_SYNC_SERVER_SECRET, // rv_srv_xxx - Required for server-side operations
 });
 
-// Get a database reference (database must be created via dashboard first)
-const db = riviumSync.database('your-database-id');
+// Get a database reference by NAME (database must be created via dashboard first)
+const db = riviumSync.database('my-app');
 
 // Get a collection reference
 const users = db.collection('users');
 ```
 
 > **Note:** Both `apiKey` and `serverSecret` are required for all server-side SDK operations. You can find these credentials in [Rivium Console](https://console.rivium.co) when you create a project. Database creation and deletion is managed via the dashboard, not via SDK.
+
+> **Use names, not UUIDs.** `database()` and `collection()` take the database and collection **names** as shown in Rivium Console (e.g. `'my-app'`, `'todos'`). Names are resolved inside your API key's project. Realtime updates are published by name, so `onSnapshot` listeners only receive changes when you pass the names.
 
 ## CRUD Operations
 
@@ -171,7 +173,7 @@ Enable realtime subscriptions for server-side event processing:
 const riviumSync = new RiviumSyncAdmin({
   apiKey: process.env.RIVIUM_SYNC_API_KEY!,
   serverSecret: process.env.RIVIUM_SYNC_SERVER_SECRET!,
-  enableRealtime: true, // Enable MQTT connection
+  enableRealtime: true, // Enable realtime subscriptions
 });
 
 // Listen to a single document
@@ -231,7 +233,7 @@ const riviumSync = new RiviumSyncAdmin({
   serverSecret: 'rv_srv_xxxxxxxxxxxxxxxxxxxxx',   // Required - from Rivium Console
 
   // Optional
-  enableRealtime: false, // Enable MQTT subscriptions
+  enableRealtime: false, // Enable realtime subscriptions
   logLevel: RiviumSyncLogLevel.ERROR, // Logging level
   timeout: 30000, // Request timeout in ms
 });
@@ -323,7 +325,7 @@ const riviumSync = new RiviumSyncAdmin({
   apiKey: process.env.RIVIUM_SYNC_API_KEY!,
   serverSecret: process.env.RIVIUM_SYNC_SERVER_SECRET!,
 });
-const db = riviumSync.database('my-database');
+const db = riviumSync.database('my-app');
 
 app.get('/api/users', async (req, res) => {
   const users = await db.collection('users').getAll();
@@ -348,7 +350,7 @@ const riviumSync = new RiviumSyncAdmin({
 });
 
 export async function handler(event) {
-  const db = riviumSync.database('my-database');
+  const db = riviumSync.database('my-app');
   const users = await db.collection('users')
     .where('status', '==', 'active')
     .get();
@@ -369,7 +371,7 @@ const riviumSync = new RiviumSyncAdmin({
   apiKey: process.env.RIVIUM_SYNC_API_KEY!,
   serverSecret: process.env.RIVIUM_SYNC_SERVER_SECRET!,
 });
-const db = riviumSync.database('my-database');
+const db = riviumSync.database('my-app');
 
 async function migrate() {
   const users = await db.collection('users').getAll();
@@ -396,7 +398,7 @@ migrate();
 
 | Method | Description |
 |--------|-------------|
-| `database(id)` | Get a database reference |
+| `database(name)` | Get a database reference by name |
 | `batch()` | Create a write batch |
 | `disconnect()` | Disconnect from realtime |
 | `setLogLevel(level)` | Change log level |
@@ -405,7 +407,7 @@ migrate();
 
 | Method | Description |
 |--------|-------------|
-| `collection<T>(id)` | Get a typed collection reference |
+| `collection<T>(name)` | Get a typed collection reference by name |
 
 ### SyncCollection
 

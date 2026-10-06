@@ -7,7 +7,7 @@
  * - Full CRUD operations on databases, collections, documents
  * - Query support with filters, sorting, pagination
  * - Batch operations for atomic writes
- * - Realtime subscriptions via MQTT
+ * - Realtime subscriptions
  * - Ideal for backend services, serverless functions, data migrations
  *
  * @packageDocumentation
@@ -445,15 +445,23 @@ export class SyncDatabase {
     this.databaseId = databaseId;
   }
 
+  /**
+   * The database name this reference was created with (as passed to
+   * `riviumSync.database(name)`).
+   */
   get id(): string {
     return this.databaseId;
   }
 
   /**
-   * Get a collection reference
+   * Get a collection reference.
+   *
+   * @param collectionName The collection NAME as shown in Rivium Console
+   *   (e.g. `'todos'`), not its UUID. Realtime updates are published by name,
+   *   so `onSnapshot` listeners only receive changes when you pass the name.
    */
-  collection<T = Record<string, unknown>>(collectionId: string): SyncCollection<T> {
-    return new SyncCollection<T>(this.admin, this.databaseId, collectionId);
+  collection<T = Record<string, unknown>>(collectionName: string): SyncCollection<T> {
+    return new SyncCollection<T>(this.admin, this.databaseId, collectionName);
   }
 }
 
@@ -542,8 +550,8 @@ export class WriteBatch {
  *   serverSecret: process.env.RIVIUM_SYNC_SERVER_SECRET, // Required for server-side operations
  * });
  *
- * // Get a database reference
- * const db = riviumSync.database('my-database-id');
+ * // Get a database reference by its NAME as shown in Rivium Console
+ * const db = riviumSync.database('my-app');
  *
  * // CRUD operations
  * const users = db.collection('users');
@@ -750,10 +758,19 @@ export class RiviumSyncAdmin {
   // ==========================================================================
 
   /**
-   * Get a database reference
+   * Get a database reference.
+   *
+   * @param databaseName The database NAME as shown in Rivium Console
+   *   (e.g. `'my-app'`), not its UUID. Realtime updates are published by name,
+   *   so `onSnapshot` listeners only receive changes when you pass the name.
+   *
+   * @example
+   * ```typescript
+   * const todos = riviumSync.database('my-app').collection('todos');
+   * ```
    */
-  database(databaseId: string): SyncDatabase {
-    return new SyncDatabase(this, databaseId);
+  database(databaseName: string): SyncDatabase {
+    return new SyncDatabase(this, databaseName);
   }
 
   /**
