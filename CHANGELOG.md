@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Every request to the Sync API now carries `X-Rivium-SDK: node/<version>`,
+  so the Console can show which SDK and version a project uses. Realtime
+  (MQTT) is unchanged. Exported `SDK_NAME`, `SDK_VERSION` and
+  `SDK_HEADER_VALUE` (`src/version.ts`, generated from package.json by
+  `scripts/gen-version.mjs` before build and test).
+
 ## 0.2.0
 
 - Added `createUserToken(userId, expiresIn?)`. Call it from your backend to mint

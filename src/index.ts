@@ -14,6 +14,12 @@
  */
 
 import mqtt, { MqttClient, IClientOptions } from 'mqtt';
+import { SDK_NAME, SDK_VERSION } from './version';
+
+export { SDK_NAME, SDK_VERSION };
+
+/** Sent as `X-Rivium-SDK` on every request: `node/<version>`. */
+export const SDK_HEADER_VALUE = `${SDK_NAME}/${SDK_VERSION}`;
 
 // ============================================================================
 // Error Codes
@@ -701,6 +707,7 @@ export class RiviumSyncAdmin {
       'Content-Type': 'application/json',
       'x-api-key': this.config.apiKey,
       'x-server-secret': this.config.serverSecret,
+      'X-Rivium-SDK': SDK_HEADER_VALUE,
     };
 
     if (this.config.userId) {

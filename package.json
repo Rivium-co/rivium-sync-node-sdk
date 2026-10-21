@@ -17,9 +17,12 @@
     "README.md"
   ],
   "scripts": {
+    "prebuild": "node scripts/gen-version.mjs",
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "predev": "node scripts/gen-version.mjs",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "lint": "eslint src --ext .ts",
+    "pretest": "node scripts/gen-version.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
