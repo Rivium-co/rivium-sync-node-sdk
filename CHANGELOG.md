@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+- Realtime (`enableRealtime`) is always encrypted (`mqtts`). If the Sync
+  API's answer is missing or not an encrypted rivium.co endpoint, the SDK uses
+  its built-in encrypted endpoint; it never connects unencrypted.
+
 ## 0.2.2
 
 - Realtime (`enableRealtime`) now uses an encrypted connection (`mqtts`) when
