@@ -37,8 +37,15 @@ describe('realtime endpoint from POST /connections/token', () => {
     expect(url).toBe('mqtts://mqtt-sync.rivium.co:8885');
   });
 
-  it('uses mqtt:// when the answer says no TLS', async () => {
-    const [url] = await connectWith({ host: 'mqtt-sync.rivium.co', port: 1884, useTls: false });
-    expect(url).toBe('mqtt://mqtt-sync.rivium.co:1884');
+  it('never connects unencrypted: an unencrypted, foreign or missing answer uses the built-in encrypted endpoint', async () => {
+    for (const ans of [
+      { host: 'mqtt-sync.rivium.co', port: 1884, useTls: false },
+      { host: 'evil.com', port: 8885, useTls: true },
+      { host: 'rivium.co.evil.com', port: 8885, useTls: true },
+      { host: 'mqtt-sync.rivium.co', port: 70000, useTls: true },
+    ]) {
+      const [url] = await connectWith(ans);
+      expect(url, JSON.stringify(ans)).toBe('mqtts://mqtt-sync.rivium.co:8885');
+    }
   });
 });

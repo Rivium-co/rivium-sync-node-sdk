@@ -149,12 +149,33 @@ interface RiviumSyncAdminConfigInternal {
   timeout: number;
 }
 
+/** Built-in realtime endpoint: always encrypted (MQTT over TLS). */
+const MQTT_HOST = 'mqtt-sync.rivium.co';
+const MQTT_TLS_PORT = 8885;
+const RIVIUM_HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*rivium\.co$/;
+
+/**
+ * Where realtime connects: the host and port POST /connections/token returns, when that answer is a valid,
+ * encrypted rivium.co endpoint; anything else (missing, another domain, unencrypted) uses the built-in encrypted
+ * endpoint. The connection is never plain, and the token never goes anywhere but Rivium.
+ */
+function resolveMqttEndpoint(answer?: { host?: unknown; port?: unknown; useTls?: unknown } | null): { host: string; port: number } {
+  const host = typeof answer?.host === 'string' ? answer.host.trim().toLowerCase() : '';
+  const port = answer?.port;
+  if (
+    answer?.useTls === true &&
+    host.length > 0 && host.length <= 253 && RIVIUM_HOST.test(host) &&
+    typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65535
+  ) {
+    return { host, port };
+  }
+  return { host: MQTT_HOST, port: MQTT_TLS_PORT };
+}
+
 interface MqttConfigInternal {
   host: string;
   wsHost?: string;
   port: number;
-  /** Encrypted connection (mqtts), as POST /connections/token says. */
-  useTls: boolean;
   wsPort: number;
   password: string;
 }
@@ -965,7 +986,7 @@ export class RiviumSyncAdmin {
       const tokenData = await this.request<{
         token: string;
         projectId?: string;
-        mqtt: { host: string; port: number; useTls: boolean };
+        mqtt?: { host?: string; port?: number; useTls?: boolean };
       }>('POST', '/connections/token');
 
       // Topics are `rivium_sync/{projectId}/{databaseName}/{collectionName}/...`
@@ -973,12 +994,12 @@ export class RiviumSyncAdmin {
       // so the same database name in two projects cannot collide.
       this.projectId = tokenData.projectId ?? null;
 
+      const endpoint = resolveMqttEndpoint(tokenData.mqtt);
       this.mqttConfig = {
-        host: tokenData.mqtt.host,
-        port: tokenData.mqtt.port,
-        useTls: tokenData.mqtt.useTls === true,
-        wsHost: tokenData.mqtt.host,
-        wsPort: tokenData.mqtt.port,
+        host: endpoint.host,
+        port: endpoint.port,
+        wsHost: endpoint.host,
+        wsPort: endpoint.port,
         password: tokenData.token,
       };
 
@@ -993,7 +1014,7 @@ export class RiviumSyncAdmin {
       return;
     }
 
-    const url = `${this.mqttConfig.useTls ? 'mqtts' : 'mqtt'}://${this.mqttConfig.host}:${this.mqttConfig.port}`;
+    const url = `mqtts://${this.mqttConfig.host}:${this.mqttConfig.port}`;
     const clientId = `rivium_sync_node_${this.generateUUID()}`;
 
     const options: IClientOptions = {
