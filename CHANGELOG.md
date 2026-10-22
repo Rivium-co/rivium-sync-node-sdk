@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Realtime (`enableRealtime`) now uses an encrypted connection (`mqtts`) when
+  the Sync API says so. Before, it always connected unencrypted.
+- Added `THIRD_PARTY_NOTICES.md`.
+
 ## 0.2.1
 
 - Every request to the Sync API now carries `X-Rivium-SDK: node/<version>`,

@@ -1,6 +1,6 @@
 {
   "name": "@rivium/sync-node",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "RiviumSync Node.js SDK - Server-side SDK for RiviumSync Realtime Database",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -14,7 +14,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "prebuild": "node scripts/gen-version.mjs",
