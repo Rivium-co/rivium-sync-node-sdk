@@ -153,6 +153,8 @@ interface MqttConfigInternal {
   host: string;
   wsHost?: string;
   port: number;
+  /** Encrypted connection (mqtts), as POST /connections/token says. */
+  useTls: boolean;
   wsPort: number;
   password: string;
 }
@@ -974,6 +976,7 @@ export class RiviumSyncAdmin {
       this.mqttConfig = {
         host: tokenData.mqtt.host,
         port: tokenData.mqtt.port,
+        useTls: tokenData.mqtt.useTls === true,
         wsHost: tokenData.mqtt.host,
         wsPort: tokenData.mqtt.port,
         password: tokenData.token,
@@ -990,7 +993,7 @@ export class RiviumSyncAdmin {
       return;
     }
 
-    const url = `mqtt://${this.mqttConfig.host}:${this.mqttConfig.port}`;
+    const url = `${this.mqttConfig.useTls ? 'mqtts' : 'mqtt'}://${this.mqttConfig.host}:${this.mqttConfig.port}`;
     const clientId = `rivium_sync_node_${this.generateUUID()}`;
 
     const options: IClientOptions = {
