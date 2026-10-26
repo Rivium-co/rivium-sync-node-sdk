@@ -16,7 +16,7 @@ import { PROJECT, clients, flush, listenCalls, realtimeAdmin } from './fake-real
  * These topics have five levels. The message handler used to require six, so listeners never fired.
  */
 describe('fallback to collection topics on an older backend (listen answers 404)', () => {
-  const DB = 'slumbercrib_monitors'; // a NAME, as an app would write it
+  const DB = 'my_app'; // a NAME, as an app would write it
   const COLLECTION_TOPIC = `rivium_sync/${PROJECT}/${DB}/notes/changes`;
   const DOCUMENT_TOPIC = `rivium_sync/${PROJECT}/${DB}/notes/doc-1`;
 
