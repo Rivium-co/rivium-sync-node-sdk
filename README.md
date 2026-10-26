@@ -60,7 +60,7 @@ const newUser = await users.add({
 });
 console.log('Created user with ID:', newUser.id);
 
-// Set with specific ID
+// Set with specific ID (creates the document, or replaces it when it exists)
 await users.doc('user-123').set({
   name: 'Jane Doe',
   email: 'jane@example.com',
@@ -101,11 +101,25 @@ await users.doc('user-123').set({
 });
 ```
 
+### Merge with `set()`
+
+`set()` replaces the whole document. To merge the given fields into the document instead (and create it when it
+does not exist), pass `{ merge: true }`:
+
+```typescript
+await users.doc('user-123').set({ age: 30 }, { merge: true });
+
+// The same in a batch
+batch.set(users.doc('user-123'), { age: 30 }, { merge: true });
+```
+
 ### Delete Documents
 
 ```typescript
 await users.doc('user-123').delete();
 ```
+
+Deleting a document that does not exist succeeds.
 
 ## Querying
 
@@ -135,6 +149,13 @@ const page1 = await users.orderBy('name').limit(10).get();
 const page2 = await users.orderBy('name').limit(10).offset(10).get();
 ```
 
+Filters, order, limit and offset are applied on the server: only the matching documents are read and returned.
+
+When the SDK acts for a user (`userId`), the database's security rules check every query. Rules are not filters:
+a query must itself ask only for documents the user may read (for example `where('teamId', '==', teamId)` when
+the rules allow a team's documents). A query the rules do not allow fails with a `QueryNotAllowedError` (see
+[Error Handling](#error-handling)).
+
 ### Available Query Operators
 
 | Operator | Description |
@@ -151,7 +172,8 @@ const page2 = await users.orderBy('name').limit(10).offset(10).get();
 
 ## Batch Operations
 
-Execute multiple writes atomically:
+Execute multiple writes atomically: they are written together, or, when one is refused (for example by the
+security rules), none is written and `commit()` throws.
 
 ```typescript
 const batch = riviumSync.batch();
@@ -201,6 +223,21 @@ const unsubscribeQuery = users
 unsubscribe();
 unsubscribeAll();
 unsubscribeQuery();
+```
+
+The first callback is the current data; after that, the callback runs on every change. Queries keep their
+filters, order and limit.
+
+To know when a listener cannot start or is ended by the server (for example when the security rules no longer
+allow it), pass an error callback. The listener is stopped when it is called:
+
+```typescript
+const unsubscribeTeam = users
+  .where('teamId', '==', 'team-1')
+  .onSnapshot(
+    (members) => console.log('Members:', members.length),
+    (error) => console.error('Listener stopped:', error.message, error.details),
+  );
 ```
 
 ## User Tokens
@@ -310,6 +347,28 @@ try {
   }
 }
 ```
+
+Errors from the Sync API also carry `statusCode` (the HTTP status, also as `status`; `undefined` when the server
+could not be reached) and, when the server gives one, `serverCode`.
+
+A query the security rules do not allow throws a `QueryNotAllowedError`. Its `fields` name the filters the rules
+expect, when the server can tell:
+
+```typescript
+import { QueryNotAllowedError } from '@rivium/sync-node';
+
+try {
+  await tasks.where('done', '==', false).get();
+} catch (error) {
+  if (error instanceof QueryNotAllowedError) {
+    console.error('Add a filter on:', error.fields); // e.g. ['teamId']
+  }
+}
+```
+
+A listener's error callback receives the same errors, and a `ListenerRevokedError`
+(`RiviumSyncErrorCode.LISTENER_REVOKED`) when the server ends a listener because the user may no longer read what
+it listens to.
 
 ## Use Cases
 
@@ -421,7 +480,7 @@ migrate();
 | `orderBy(field, direction?)` | Start a sorted query |
 | `limit(count)` | Start a limited query |
 | `query()` | Get query builder |
-| `onSnapshot(callback, options?)` | Listen to changes |
+| `onSnapshot(callback, options?, onError?)` | Listen to changes |
 
 ### SyncDocumentRef
 
@@ -429,10 +488,10 @@ migrate();
 |--------|-------------|
 | `get()` | Get document data |
 | `exists()` | Check if document exists |
-| `set(data)` | Set document (overwrite) |
+| `set(data, options?)` | Set document (replaces it; `{ merge: true }` merges) |
 | `update(data)` | Update document (merge) |
 | `delete()` | Delete document |
-| `onSnapshot(callback)` | Listen to changes |
+| `onSnapshot(callback, onError?)` | Listen to changes |
 
 ### SyncQuery
 
@@ -446,13 +505,13 @@ migrate();
 | `get()` | Execute query |
 | `getFirst()` | Get first result |
 | `count()` | Count results |
-| `onSnapshot(callback)` | Listen to query |
+| `onSnapshot(callback, onError?)` | Listen to query |
 
 ### WriteBatch
 
 | Method | Description |
 |--------|-------------|
-| `set(docRef, data)` | Add set operation |
+| `set(docRef, data, options?)` | Add set operation (replaces; `{ merge: true }` merges) |
 | `update(docRef, data)` | Add update operation |
 | `delete(docRef)` | Add delete operation |
 | `commit()` | Execute all operations |

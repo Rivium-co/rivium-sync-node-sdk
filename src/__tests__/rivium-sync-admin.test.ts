@@ -93,11 +93,16 @@ describe('RiviumSyncErrorCode', () => {
     expect(RiviumSyncErrorCode.UNKNOWN_ERROR).toBe(9999);
   });
 
-  it('should have exactly 20 error codes', () => {
+  it('should define the listener and query rule error codes', () => {
+    expect(RiviumSyncErrorCode.LISTENER_REVOKED).toBe(1101);
+    expect(RiviumSyncErrorCode.QUERY_NOT_ALLOWED).toBe(1702);
+  });
+
+  it('should have exactly 22 error codes', () => {
     const numericValues = Object.values(RiviumSyncErrorCode).filter(
       (v) => typeof v === 'number',
     );
-    expect(numericValues).toHaveLength(20);
+    expect(numericValues).toHaveLength(22);
   });
 });
 
@@ -446,8 +451,8 @@ describe('RiviumSyncAdmin', () => {
       expect(result).toEqual(docs);
     });
 
-    it('should include query params for filters, orderBy, limit, offset', async () => {
-      const fetchSpy = mockFetchSuccess({ documents: [] });
+    it('should POST filters, orderBy, limit, offset in the query body', async () => {
+      const fetchSpy = mockFetchSuccess({ data: [], total: 0 });
       vi.stubGlobal('fetch', fetchSpy);
 
       const admin = createAdmin();
@@ -459,12 +464,16 @@ describe('RiviumSyncAdmin', () => {
         offset: 5,
       });
 
-      const calledUrl = fetchSpy.mock.calls[0][0] as string;
-      expect(calledUrl).toContain('filters=');
-      expect(calledUrl).toContain('orderBy=name');
-      expect(calledUrl).toContain('orderDirection=desc');
-      expect(calledUrl).toContain('limit=10');
-      expect(calledUrl).toContain('offset=5');
+      const [calledUrl, init] = fetchSpy.mock.calls[0];
+      expect(calledUrl).toBe('https://sync.rivium.co/databases/db1/collections/users/documents/sdk/query');
+      expect(calledUrl).not.toContain('?');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({
+        filters: [{ field: 'age', operator: '>=', value: 18 }],
+        orderBy: { field: 'name', direction: 'desc' },
+        limit: 10,
+        offset: 5,
+      });
     });
   });
 
@@ -500,7 +509,7 @@ describe('RiviumSyncAdmin', () => {
         'https://sync.rivium.co/databases/db1/collections/users/documents/sdk/doc1',
       );
       expect(options.method).toBe('PUT');
-      expect(JSON.parse(options.body)).toEqual({ data: { name: 'Updated' } });
+      expect(JSON.parse(options.body)).toEqual({ data: { name: 'Updated' }, merge: false });
     });
   });
 
@@ -538,7 +547,7 @@ describe('RiviumSyncAdmin', () => {
   });
 
   describe('executeBatch', () => {
-    it('should execute all operations sequentially', async () => {
+    it('sends every operation in one POST /batch/sdk (one transaction on the server)', async () => {
       const fetchSpy = mockFetchSuccess({});
       vi.stubGlobal('fetch', fetchSpy);
 
@@ -549,14 +558,34 @@ describe('RiviumSyncAdmin', () => {
         { type: 'delete', databaseId: 'db1', collectionId: 'users', documentId: 'd3' },
       ]);
 
-      expect(fetchSpy).toHaveBeenCalledTimes(3);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, options] = fetchSpy.mock.calls[0];
+      expect(url).toBe('https://sync.rivium.co/batch/sdk');
+      expect(options.method).toBe('POST');
+      expect(JSON.parse(options.body)).toEqual({
+        operations: [
+          { type: 'set', databaseId: 'db1', collectionId: 'users', documentId: 'd1', data: { a: 1 }, merge: false },
+          { type: 'update', databaseId: 'db1', collectionId: 'users', documentId: 'd2', data: { b: 2 } },
+          { type: 'delete', databaseId: 'db1', collectionId: 'users', documentId: 'd3' },
+        ],
+      });
+    });
 
-      // Verify set (PUT)
-      expect(fetchSpy.mock.calls[0][1].method).toBe('PUT');
-      // Verify update (PATCH)
-      expect(fetchSpy.mock.calls[1][1].method).toBe('PATCH');
-      // Verify delete (DELETE)
-      expect(fetchSpy.mock.calls[2][1].method).toBe('DELETE');
+    it('a refused batch throws the server error (nothing is written one by one)', async () => {
+      const fetchSpy = mockFetchFailure(403, JSON.stringify({ statusCode: 403, message: 'Permission denied' }));
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const admin = createAdmin();
+      const error = await admin
+        .executeBatch([
+          { type: 'set', databaseId: 'db1', collectionId: 'users', documentId: 'd1', data: { a: 1 } },
+          { type: 'set', databaseId: 'db1', collectionId: 'users', documentId: 'd2', data: { a: 2 } },
+        ])
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(RiviumSyncError);
+      expect(error.statusCode).toBe(403);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should handle empty operations array', async () => {
@@ -731,9 +760,9 @@ describe('SyncCollection', () => {
       const col = admin.database('db1').collection('users');
       await col.getAll({ limit: 5, orderBy: 'name' });
 
-      const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain('limit=5');
-      expect(url).toContain('orderBy=name');
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe('https://sync.rivium.co/databases/db1/collections/users/documents/sdk/query');
+      expect(JSON.parse(init.body)).toEqual({ orderBy: { field: 'name', direction: 'asc' }, limit: 5 });
     });
   });
 
@@ -947,9 +976,9 @@ describe('SyncQuery', () => {
       const result = await col.query().where('age', '>=', 18).get();
       expect(result).toEqual(docs);
 
-      // Verify the URL includes filter params
-      const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain('filters=');
+      // The filter goes in the POST body, where the server applies it
+      const init = fetchSpy.mock.calls[0][1];
+      expect(JSON.parse(init.body).filters).toEqual([{ field: 'age', operator: '>=', value: 18 }]);
     });
 
     it('should pass orderBy and limit to the request', async () => {
@@ -959,10 +988,9 @@ describe('SyncQuery', () => {
       const col = admin.database('db1').collection('users');
       await col.query().orderBy('name', 'desc').limit(5).get();
 
-      const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain('orderBy=name');
-      expect(url).toContain('orderDirection=desc');
-      expect(url).toContain('limit=5');
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(body.orderBy).toEqual({ field: 'name', direction: 'desc' });
+      expect(body.limit).toBe(5);
     });
 
     it('should pass offset to the request', async () => {
@@ -972,8 +1000,7 @@ describe('SyncQuery', () => {
       const col = admin.database('db1').collection('users');
       await col.query().offset(15).get();
 
-      const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain('offset=15');
+      expect(JSON.parse(fetchSpy.mock.calls[0][1].body).offset).toBe(15);
     });
   });
 
@@ -1134,8 +1161,9 @@ describe('WriteBatch', () => {
 
       await batch.commit();
 
-      // Two operations: PUT for set, PATCH for update
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      // Both operations in one POST /batch/sdk
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(fetchSpy.mock.calls[0][1].body).operations.map((o: { type: string }) => o.type)).toEqual(['set', 'update']);
     });
 
     it('should clear operations after commit (size becomes 0)', async () => {
@@ -1192,8 +1220,8 @@ describe('WriteBatch', () => {
 
       await batch.commit();
 
-      const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain('/databases/my-db/collections/orders/documents/sdk/order-42');
+      const [op] = JSON.parse(fetchSpy.mock.calls[0][1].body).operations;
+      expect(op).toMatchObject({ databaseId: 'my-db', collectionId: 'orders', documentId: 'order-42' });
     });
   });
 });
