@@ -50,13 +50,13 @@
 
 ## 0.2.3
 
-- Realtime (`enableRealtime`) is always encrypted (`mqtts`). If the Sync
+- Realtime (`enableRealtime`) is always encrypted. If the Sync
   API's answer is missing or not an encrypted rivium.co endpoint, the SDK uses
   its built-in encrypted endpoint; it never connects unencrypted.
 
 ## 0.2.2
 
-- Realtime (`enableRealtime`) now uses an encrypted connection (`mqtts`) when
+- Realtime (`enableRealtime`) now uses an encrypted connection when
   the Sync API says so. Before, it always connected unencrypted.
 - Added `THIRD_PARTY_NOTICES.md`.
 
@@ -64,7 +64,7 @@
 
 - Every request to the Sync API now carries `X-Rivium-SDK: node/<version>`,
   so the Console can show which SDK and version a project uses. Realtime
-  (MQTT) is unchanged. Exported `SDK_NAME`, `SDK_VERSION` and
+  is unchanged. Exported `SDK_NAME`, `SDK_VERSION` and
   `SDK_HEADER_VALUE`.
 
 ## 0.2.0
